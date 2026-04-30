@@ -227,7 +227,7 @@ CREATE POLICY "public_access" ON content_planner FOR ALL USING (true);</span>
     <div class="f mb0">
       <label>API Key — <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--ac);font-size:10px">→ Lấy miễn phí tại đây</a></label>
       <input type="password" id="apiKey" placeholder="AIzaSy..." oninput="debounceSave()"/>
-      <div class="hint">Dùng <strong style="color:var(--ac)">gemini-2.0-flash</strong> — miễn phí 1,500 requests/ngày, không cần billing. Lấy key tại <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
+      <div class="hint">Dùng <strong style="color:var(--ac)">gemini-2.0-flash-lite</strong> — miễn phí, không cần billing. Lấy key tại <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></div>
     </div>
   </div>
 
@@ -645,7 +645,7 @@ function refCtx(){
 async function callGemini(prompt){
   const key=g('apiKey');
   if(!key)throw new Error('Chưa có API key');
-  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,{
+  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.9}})
   });
