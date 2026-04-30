@@ -138,6 +138,11 @@ select option{background:var(--s2)}
 .modal p{font-size:12px;color:var(--tx2);line-height:1.7;margin-bottom:14px}
 .close-modal{position:absolute;top:10px;right:14px;cursor:pointer;color:var(--tx3);font-size:18px;background:none;border:none;line-height:1}
 
+/* AI EDIT BOX */
+.ai-edit-box{background:var(--s2);border:1px solid rgba(200,240,96,.25);border-radius:var(--rs);padding:10px;margin-top:8px;display:none}
+.ai-edit-box textarea{margin-bottom:8px;border-color:var(--bd)}
+.ai-edit-actions{display:flex;gap:6px}
+
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px}
 </style>
@@ -368,11 +373,21 @@ CREATE POLICY "public_access" ON content_planner FOR ALL USING (true);</span>
 
     <!-- PERIOD & OPTIONS -->
     <div style="margin-top:14px;margin-bottom:14px">
-      <label style="font-size:11px;color:var(--tx2);display:block;margin-bottom:8px">Thời gian</label>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="font-size:11px;color:var(--tx2)">Thời gian</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:11px;color:var(--tx2)">Post / ngày</label>
+          <select id="postsPerDay" style="width:auto;padding:5px 10px;font-size:12px">
+            <option value="1" selected>1 post</option>
+            <option value="2">2 posts</option>
+            <option value="3">3 posts</option>
+          </select>
+        </div>
+      </div>
       <div class="period-row">
-        <button class="period-pill on" data-v="7" onclick="setPeriod(this)">1 tuần · 7 posts</button>
-        <button class="period-pill" data-v="14" onclick="setPeriod(this)">2 tuần · 14 posts</button>
-        <button class="period-pill" data-v="30" onclick="setPeriod(this)">1 tháng · 30 posts</button>
+        <button class="period-pill on" data-v="7" onclick="setPeriod(this)">1 tuần · 7 ngày</button>
+        <button class="period-pill" data-v="14" onclick="setPeriod(this)">2 tuần · 14 ngày</button>
+        <button class="period-pill" data-v="30" onclick="setPeriod(this)">1 tháng · 30 ngày</button>
       </div>
     </div>
 
@@ -651,10 +666,13 @@ const MIX={
   engage:['Câu hỏi cho followers','This or That','Chia sẻ quan điểm','Tag một người','Thử thách','Ý kiến của bạn','Poll / khảo sát'],
 };
 const DAYS7=['T.Hai','T.Ba','T.Tư','T.Năm','T.Sáu','T.Bảy','C.Nhật'];
-function dayLabel(i,count){
-  if(count===7)return DAYS7[i%7];
-  if(count===14)return`Tuần ${Math.floor(i/7)+1} — ${DAYS7[i%7]}`;
-  return`Ngày ${i+1}`;
+function dayLabel(i,days,ppd){
+  ppd=ppd||1;
+  const dayIdx=Math.floor(i/ppd);
+  const postNum=ppd>1?` #${(i%ppd)+1}`:'';
+  if(days===7)return DAYS7[dayIdx%7]+postNum;
+  if(days===14)return`Tuần ${Math.floor(dayIdx/7)+1} — ${DAYS7[dayIdx%7]}${postNum}`;
+  return`Ngày ${dayIdx+1}${postNum}`;
 }
 
 // ── GENERATE PLAN ──
@@ -665,7 +683,8 @@ async function genPlan(){
   if(themeMode==='monthly'&&!campaigns.some(c=>c.text.trim())){alert('Nhập ít nhất 1 campaign!');return}
 
   const writeCap=g('writeCap')==='yes';
-  const count=period;
+  const postsPerDay=parseInt(g('postsPerDay'))||1;
+  const count=period*postsPerDay;
   const mix=g('contentMix');
   const ctx=brandCtx();
   const rCtx=refCtx();
@@ -677,34 +696,35 @@ async function genPlan(){
   setProgress(5,'Đang lên outline...');
 
   let outlinePrompt='';
+  const ppd=postsPerDay>1?` (${postsPerDay} posts/ngày, mỗi ngày ${postsPerDay} bài với loại/góc nhìn khác nhau)`:'' ;
   if(themeMode==='single'){
     const theme=g('theme'),cd=g('campDesc');
     outlinePrompt=`Bạn là chuyên gia content marketing.
 THƯƠNG HIỆU:\n${ctx}
-Lên content plan ${count} posts. Campaign: "${theme}"${cd?'\nBối cảnh: '+cd:''}
+Lên content plan ${count} posts${ppd}. Campaign: "${theme}"${cd?'\nBối cảnh: '+cd:''}
 Loại nội dung: ${mix}.
 Trả về JSON array đúng ${count} objects:
-{"day":"${count===7?'T.Hai':'Ngày 1'}","type":"loại bài","angle":"góc nhìn cụ thể","hook":"hook idea 1 câu","key_msg":"thông điệp chính","campaign":"${theme}"}
+{"day":"${period===7?'T.Hai':'Ngày 1'}${postsPerDay>1?' #1':''}","type":"loại bài","angle":"góc nhìn cụ thể","hook":"hook idea 1 câu","key_msg":"thông điệp chính","campaign":"${theme}"}
 Chỉ JSON, không giải thích.`;
   } else if(themeMode==='multi'){
     const themes=multiThemes.filter(t=>t.text.trim());
     outlinePrompt=`Bạn là chuyên gia content marketing.
 THƯƠNG HIỆU:\n${ctx}
-Lên content plan ${count} posts với ${themes.length} chủ đề xoay vòng:
+Lên content plan ${count} posts${ppd} với ${themes.length} chủ đề xoay vòng:
 ${themes.map((t,i)=>`Chủ đề ${i+1}: ${t.text}`).join('\n')}
 Phân bổ đều, không lặp chủ đề liên tiếp. Loại nội dung: ${mix}.
 Trả về JSON array đúng ${count} objects:
-{"day":"${count===7?'T.Hai':'Ngày 1'}","type":"loại bài","angle":"góc nhìn cụ thể","hook":"hook idea","key_msg":"thông điệp","campaign":"tên chủ đề áp dụng"}
+{"day":"${period===7?'T.Hai':'Ngày 1'}${postsPerDay>1?' #1':''}","type":"loại bài","angle":"góc nhìn cụ thể","hook":"hook idea","key_msg":"thông điệp","campaign":"tên chủ đề áp dụng"}
 Chỉ JSON.`;
   } else {
     const camps=campaigns.filter(c=>c.text.trim());
     outlinePrompt=`Bạn là chuyên gia content marketing.
 THƯƠNG HIỆU:\n${ctx}
-Lên content plan chia thành ${camps.length} campaign:
-${camps.map((c,i)=>`Campaign ${i+1}: "${c.text}" (${c.days} posts)`).join('\n')}
+Lên content plan chia thành ${camps.length} campaign${ppd}:
+${camps.map((c,i)=>`Campaign ${i+1}: "${c.text}" (${c.days*postsPerDay} posts)`).join('\n')}
 Loại nội dung: ${mix}.
-Trả về JSON array đúng ${camps.reduce((a,c)=>a+c.days,0)} objects:
-{"day":"Ngày 1","type":"loại bài","angle":"góc nhìn","hook":"hook idea","key_msg":"thông điệp","campaign":"tên campaign"}
+Trả về JSON array đúng ${camps.reduce((a,c)=>a+c.days*postsPerDay,0)} objects:
+{"day":"Ngày 1${postsPerDay>1?' #1':''}","type":"loại bài","angle":"góc nhìn","hook":"hook idea","key_msg":"thông điệp","campaign":"tên campaign"}
 Chỉ JSON.`;
   }
 
@@ -716,8 +736,8 @@ Chỉ JSON.`;
   }catch(e){
     if(e.message==='QUOTA'){showQuotaErr();return}
     for(let i=0;i<count;i++){
-      const camp=themeMode==='single'?g('theme'):themeMode==='multi'?multiThemes[i%multiThemes.length]?.text:'Campaign';
-      outline.push({day:dayLabel(i,count),type:types[i%types.length],angle:'',hook:'',key_msg:camp,campaign:camp});
+      const camp=themeMode==='single'?g('theme'):themeMode==='multi'?multiThemes[Math.floor(i/postsPerDay)%multiThemes.length]?.text:'Campaign';
+      outline.push({day:dayLabel(i,period,postsPerDay),type:types[i%types.length],angle:'',hook:'',key_msg:camp,campaign:camp});
     }
   }
 
@@ -798,9 +818,17 @@ function renderCards(outline,writeCap){
         ${writeCap?`
           <div class="cap-box dim" id="cap-${i}"><span class="spin"></span> Đang viết...</div>
           <textarea class="cap-edit" id="edit-${i}"></textarea>
+          <div class="ai-edit-box" id="aiedit-${i}">
+            <textarea id="aiprompt-${i}" rows="2" placeholder="VD: Viết ngắn lại, thêm emoji hơn, đổi hook mạnh hơn, thêm CTA cuối..."></textarea>
+            <div class="ai-edit-actions">
+              <button class="btnp" style="flex:1;padding:7px;font-size:12px" onclick="aiEditC(${i})">✦ AI chỉnh sửa</button>
+              <button class="btns" style="font-size:12px" onclick="closeAiEdit(${i})">Huỷ</button>
+            </div>
+          </div>
           <div class="post-acts" id="acts-${i}" style="display:none">
             <button class="btng" onclick="copyC(${i})">Copy</button>
-            <button class="btng" onclick="editC(${i})">Chỉnh sửa</button>
+            <button class="btng" onclick="toggleAiEdit(${i})">✦ AI sửa</button>
+            <button class="btng" onclick="editC(${i})" id="editbtn-${i}">Tự sửa</button>
             <button class="btns" style="font-size:11px;padding:3px 12px" onclick="saveC(${i})">Lưu lại</button>
             <button class="btng" onclick="regenC(${i})">↻ Viết lại</button>
           </div>
@@ -810,9 +838,17 @@ function renderCards(outline,writeCap){
           </div>
           <div class="cap-box" id="cap-${i}" style="display:none"></div>
           <textarea class="cap-edit" id="edit-${i}"></textarea>
+          <div class="ai-edit-box" id="aiedit-${i}">
+            <textarea id="aiprompt-${i}" rows="2" placeholder="VD: Viết ngắn lại, thêm emoji hơn, đổi hook mạnh hơn, thêm CTA cuối..."></textarea>
+            <div class="ai-edit-actions">
+              <button class="btnp" style="flex:1;padding:7px;font-size:12px" onclick="aiEditC(${i})">✦ AI chỉnh sửa</button>
+              <button class="btns" style="font-size:12px" onclick="closeAiEdit(${i})">Huỷ</button>
+            </div>
+          </div>
           <div class="post-acts" id="acts-${i}" style="display:none">
             <button class="btng" onclick="copyC(${i})">Copy</button>
-            <button class="btng" onclick="editC(${i})">Chỉnh sửa</button>
+            <button class="btng" onclick="toggleAiEdit(${i})">✦ AI sửa</button>
+            <button class="btng" onclick="editC(${i})" id="editbtn-${i}">Tự sửa</button>
             <button class="btns" style="font-size:11px;padding:3px 12px" onclick="saveC(${i})">Lưu lại</button>
             <button class="btng" onclick="regenC(${i})">↻ Viết lại</button>
           </div>
@@ -860,16 +896,72 @@ Chỉ trả về caption.`;
   catch(e){setCapErr(i,'Lỗi: '+e.message);setPS(i,'err')}
 }
 
-function editC(i){
+function toggleAiEdit(i){
+  const box=document.getElementById('aiedit-'+i);
   const capEl=document.getElementById('cap-'+i);
   const editEl=document.getElementById('edit-'+i);
+  // Close manual edit if open
   if(editEl.style.display==='block'){
     capEl.textContent=editEl.value;capEl.dataset.cap=editEl.value;
     editEl.style.display='none';capEl.style.display='';
-    event.target.textContent='Chỉnh sửa';
+    const eb=document.getElementById('editbtn-'+i);if(eb)eb.textContent='Tự sửa';
+  }
+  const isOpen=box.style.display==='block';
+  box.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    const ta=document.getElementById('aiprompt-'+i);
+    if(ta)ta.focus();
+  }
+}
+function closeAiEdit(i){
+  document.getElementById('aiedit-'+i).style.display='none';
+}
+async function aiEditC(i){
+  const cap=document.getElementById('cap-'+i);
+  const promptEl=document.getElementById('aiprompt-'+i);
+  const instruction=promptEl.value.trim();
+  if(!instruction){promptEl.focus();promptEl.style.borderColor='var(--red)';setTimeout(()=>promptEl.style.borderColor='',1500);return}
+  const currentCap=cap.dataset.cap||cap.textContent;
+  const btn=document.querySelector(`#aiedit-${i} .btnp`);
+  btn.textContent='Đang chỉnh sửa...';btn.disabled=true;
+  const prompt=`Bạn là chuyên gia viết content social media.
+
+Đây là caption hiện tại:
+---
+${currentCap}
+---
+
+Yêu cầu chỉnh sửa: ${instruction}
+
+Chỉnh sửa caption theo đúng yêu cầu, giữ nguyên tone và style gốc, chỉ thay đổi những gì được yêu cầu.
+Chỉ trả về caption đã chỉnh sửa, không giải thích.`;
+  try{
+    const newCap=await callGemini(prompt);
+    setCapDone(i,newCap,window._outline?.[i]||{});
+    setPS(i,'done');
+    promptEl.value='';
+    document.getElementById('aiedit-'+i).style.display='none';
+  }catch(e){
+    btn.textContent='✦ AI chỉnh sửa';btn.disabled=false;
+    alert('Lỗi: '+e.message);
+  }
+  btn.textContent='✦ AI chỉnh sửa';btn.disabled=false;
+}
+function editC(i){
+  const capEl=document.getElementById('cap-'+i);
+  const editEl=document.getElementById('edit-'+i);
+  const btn=document.getElementById('editbtn-'+i)||event.target;
+  // Close AI edit if open
+  const aiBox=document.getElementById('aiedit-'+i);
+  if(aiBox)aiBox.style.display='none';
+  if(editEl.style.display==='block'){
+    capEl.textContent=editEl.value;capEl.dataset.cap=editEl.value;
+    editEl.style.display='none';capEl.style.display='';
+    btn.textContent='Tự sửa';
   }else{
-    editEl.value=capEl.textContent;editEl.style.display='block';capEl.style.display='none';
-    editEl.focus();event.target.textContent='✓ Lưu chỉnh sửa';
+    editEl.value=capEl.dataset.cap||capEl.textContent;
+    editEl.style.display='block';capEl.style.display='none';
+    editEl.focus();btn.textContent='✓ Lưu';
   }
 }
 function copyC(i){
