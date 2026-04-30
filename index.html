@@ -150,7 +150,10 @@ select option{background:var(--s2)}
     <button class="close-modal" onclick="closeModal()">×</button>
     <h3>☁ Sync qua thiết bị</h3>
     <p>Dùng <strong style="color:var(--ac)">Supabase</strong> để lưu cloud — miễn phí.<br>
-    Setup 1 lần, tự động sync mọi thiết bị.</p>
+    Sau khi kết nối: <strong style="color:var(--tx)">API key, toàn bộ thông tin brand và caption đã lưu</strong> sẽ tự động sync giữa mọi thiết bị.</p>
+    <div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:var(--rs);padding:10px 13px;font-size:12px;color:var(--gold);line-height:1.7;margin-bottom:12px">
+      ⚠️ <strong>Lưu ý:</strong> Supabase URL & Key này cần nhập <strong>1 lần mỗi thiết bị mới</strong> (lưu trong máy đó). Sau đó mọi thứ còn lại tự động sync.
+    </div>
     <div style="background:var(--s2);border:1px solid var(--bd);border-radius:var(--rs);padding:12px;font-size:12px;color:var(--tx2);line-height:1.9;margin-bottom:14px">
       1. Vào <a href="https://supabase.com" target="_blank" style="color:var(--ac)">supabase.com</a> → tạo project<br>
       2. <strong style="color:var(--tx)">Project Settings → API</strong> → copy URL & anon key<br>
@@ -529,18 +532,26 @@ async function saveAll(){
   if(sbConnected) await pushToSupabase(RECORD_ID,data);
 }
 async function loadAll(){
-  if(sbConnected){
-    setSyncStatus('syncing','Đang tải...');
-    try{
-      const cd=await pullFromSupabase(RECORD_ID);
-      if(cd){applyData(cd);localStorage.setItem('cp3',JSON.stringify(cd));setSyncStatus('ok','Đã sync')}
-      else{const lc=JSON.parse(localStorage.getItem('cp3')||'{}');if(Object.keys(lc).length)applyData(lc)}
-    }catch(e){setSyncStatus('err','Lỗi sync');const lc=JSON.parse(localStorage.getItem('cp3')||'{}');if(Object.keys(lc).length)applyData(lc)}
-    try{const s=await pullFromSupabase(SAVED_ID);if(s&&Array.isArray(s)){saved=s;uhc()}}catch(e){}
-  }else{
-    const lc=JSON.parse(localStorage.getItem('cp3')||'{}');if(Object.keys(lc).length)applyData(lc);
-    saved=JSON.parse(localStorage.getItem('cp3_saved')||'[]');uhc();
-  }
+  // Always load local first for instant display
+  const lc=JSON.parse(localStorage.getItem('cp3')||'{}');
+  if(Object.keys(lc).length)applyData(lc);
+  const ls=JSON.parse(localStorage.getItem('cp3_saved')||'[]');
+  if(ls.length){saved=ls;uhc();}
+
+  if(!sbConnected)return;
+
+  // Then fetch cloud and override
+  setSyncStatus('syncing','Đang tải từ cloud...');
+  try{
+    const cd=await pullFromSupabase(RECORD_ID);
+    if(cd){applyData(cd);localStorage.setItem('cp3',JSON.stringify(cd));}
+    // Always pull saved captions separately
+    const cs=await pullFromSupabase(SAVED_ID);
+    if(cs&&Array.isArray(cs)&&cs.length){
+      saved=cs;localStorage.setItem('cp3_saved',JSON.stringify(cs));uhc();
+    }
+    setSyncStatus('ok','Đã sync');
+  }catch(e){setSyncStatus('err','Lỗi sync — dùng dữ liệu local');}
 }
 
 // ── SUPABASE ──
@@ -574,8 +585,12 @@ async function saveSupabase(){
   try{
     await testSupabase(url,key);sbUrl=url;sbKey=key;sbConnected=true;
     localStorage.setItem('cp3_sb',JSON.stringify({url,key}));setSyncStatus('ok','Đã kết nối');
-    res.textContent='✓ Kết nối thành công!';res.style.color='#6fdf7f';
-    await saveAll();setTimeout(()=>closeModal(),1200);
+    res.textContent='✓ Kết nối thành công! Đang đồng bộ...';res.style.color='#6fdf7f';
+    // Push brand profile + saved captions lên cloud
+    await saveAll();
+    if(saved.length) await pushToSupabase(SAVED_ID,saved);
+    res.textContent='✓ Kết nối & đồng bộ thành công!';
+    setTimeout(()=>closeModal(),1400);
   }catch(e){res.textContent='❌ Lỗi: '+e.message;res.style.color='var(--red)'}
 }
 function copySQL(){navigator.clipboard.writeText(document.getElementById('sqlCode').textContent);event.target.textContent='Đã copy!';setTimeout(()=>event.target.textContent='Copy SQL',1500)}
@@ -915,13 +930,18 @@ function toggleSeeMore(i){
 }
 function copySaved(i){navigator.clipboard.writeText(saved[i].cap);event.target.textContent='✓';setTimeout(()=>event.target.textContent='Copy',1500)}
 async function rmSaved(i){
-  saved.splice(i,1);localStorage.setItem('cp3_saved',JSON.stringify(saved));
+  saved.splice(i,1);
+  localStorage.setItem('cp3_saved',JSON.stringify(saved));
   if(sbConnected)await pushToSupabase(SAVED_ID,saved);
   uhc();renderSaved();
 }
 async function clearSaved(){
-  if(confirm('Xóa tất cả?')){saved=[];localStorage.removeItem('cp3_saved');
-  if(sbConnected)await pushToSupabase(SAVED_ID,[]);uhc();renderSaved()}
+  if(confirm('Xóa tất cả?')){
+    saved=[];
+    localStorage.removeItem('cp3_saved');
+    if(sbConnected)await pushToSupabase(SAVED_ID,[]);
+    uhc();renderSaved();
+  }
 }
 
 // ── BOOT ──
